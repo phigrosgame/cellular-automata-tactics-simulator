@@ -7,6 +7,7 @@ import { DataPanel } from './ui/DataPanel';
 import { SkillPanel } from './ui/SkillPanel';
 import { TimeControlPanel } from './ui/TimeControlPanel';
 import { MacroPanel } from './ui/MacroPanel';
+import { AutoPlayPanel } from './ui/AutoPlayPanel';
 import { CellState, SkillType, DEFAULT_GRID_SIZE, GAME_PRESETS, COLORS } from './Types';
 import './styles.css';
 
@@ -16,6 +17,7 @@ class App {
   private skillPanel!: SkillPanel;
   private timeControl!: TimeControlPanel;
   private macroPanel!: MacroPanel;
+  private autoPlayPanel!: AutoPlayPanel;
   private updateInterval: number = 0;
 
   constructor() {
@@ -89,6 +91,7 @@ class App {
 
           <!-- Right sidebar -->
           <div class="sidebar sidebar-right" id="sidebar-right">
+            <div id="autoplay-panel-container"></div>
             <div id="macro-panel-container"></div>
             <div class="panel-section">
               <div class="panel-title">歷史趨勢</div>
@@ -102,6 +105,7 @@ class App {
                 <p>⌨️ Ctrl+Z: 時空回溯</p>
                 <p>⌨️ 1/2/3: 切換速度</p>
                 <p>🎯 選擇技能後點擊地圖施放</p>
+                <p>🎬 觀眾模式：放手讓 AI 自己打</p>
               </div>
             </div>
           </div>
@@ -138,6 +142,28 @@ class App {
       document.getElementById('macro-panel-container')!,
       this.game.getMacroEngine()
     );
+    this.autoPlayPanel = new AutoPlayPanel(
+      document.getElementById('autoplay-panel-container')!,
+      this.game.getAutoPlayer(),
+      {
+        onToggle: (enabled) => {
+          this.game.setAutoPlayEnabled(enabled);
+          this.autoPlayPanel.syncState();
+        },
+        onRunTicks: (n) => {
+          this.game.runAutoTicks(n);
+          this.autoPlayPanel.syncState();
+        },
+        onReset: () => {
+          this.game.reset();
+          this.autoPlayPanel.syncState();
+        },
+      }
+    );
+
+    // Spectator mode ON by default — let it entertain on load.
+    this.game.setAutoPlayEnabled(true);
+    this.autoPlayPanel.syncState();
 
     // Setup settings handlers
     this.setupSettingsHandlers(mainCanvas);

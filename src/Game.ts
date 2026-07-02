@@ -11,6 +11,7 @@ import { StatsTracker } from './state/StatsTracker';
 import { TerrainSystem } from './terrain/TerrainSystem';
 import { Leviathan } from './entities/Leviathan';
 import { MacroEngine } from './macro/MacroEngine';
+import { AutoPlayer } from './ai/AutoPlayer';
 import { CanvasRenderer } from './renderer/CanvasRenderer';
 import { ChartRenderer } from './renderer/ChartRenderer';
 import { WebGLRenderer } from './renderer/WebGLRenderer';
@@ -31,6 +32,11 @@ export class Game {
   private statsTracker: StatsTracker;
   private leviathan: Leviathan | null = null;
   private macroEngine: MacroEngine;
+  private autoPlayer: AutoPlayer;
+
+  // Auto-play scheduler
+  private autoPlayScheduledTicks: number = 0;
+  private autoPlaySpeedDuringRun: number = 5;
 
   // Rendering
   private canvasRenderer: CanvasRenderer;
@@ -68,6 +74,7 @@ export class Game {
     this.timeController = new TimeController();
     this.statsTracker = new StatsTracker();
     this.macroEngine = new MacroEngine();
+    this.autoPlayer = new AutoPlayer();
 
     // Initialize renderers
     this.canvasRenderer = new CanvasRenderer(mainCanvas);
@@ -269,6 +276,18 @@ export class Game {
       // Execute macro rules
       this.macroEngine.executeRules(this);
 
+      // Auto-player takes over if enabled (or if we're in a scheduled run)
+      if (this.autoPlayer.isEnabled() || this.autoPlayScheduledTicks > 0) {
+        this.autoPlayer.onTick(this.timeController.getCurrentTick(), this.grid, this.skillSystem);
+        if (this.autoPlayScheduledTicks > 0) {
+          this.autoPlayScheduledTicks--;
+          if (this.autoPlayScheduledTicks === 0 && !this.autoPlayer.isEnabled()) {
+            // Stop simulation when scheduled run finishes
+            this.timeController.setPaused(true);
+          }
+        }
+      }
+
     } finally {
       this.computing = false;
     }
@@ -316,6 +335,33 @@ export class Game {
   getTimeController(): TimeController { return this.timeController; }
   getStatsTracker(): StatsTracker { return this.statsTracker; }
   getMacroEngine(): MacroEngine { return this.macroEngine; }
+  getAutoPlayer(): AutoPlayer { return this.autoPlayer; }
+
+  setAutoPlayEnabled(enabled: boolean): void {
+    this.autoPlayer.setEnabled(enabled);
+    if (enabled) {
+      // Make sure simulation is running at a fun speed
+      if (this.timeController.isPaused()) {
+        this.timeController.setPaused(false);
+      }
+      if (this.timeController.getSpeed() < 2) {
+        this.timeController.setSpeed(5);
+      }
+    }
+  }
+
+  /**
+   * Run the simulation autonomously for N ticks.
+   * (Used by the "🎲 Auto-play N ticks" button.)
+   */
+  runAutoTicks(n: number): void {
+    this.autoPlayScheduledTicks = Math.max(1, n);
+    this.autoPlayer.setEnabled(true);
+    const prevSpeed = this.timeController.getSpeed();
+    this.autoPlaySpeedDuringRun = prevSpeed >= 2 ? prevSpeed : 5;
+    this.timeController.setSpeed(this.autoPlaySpeedDuringRun);
+    this.timeController.setPaused(false);
+  }
   getTick(): number { return this.timeController.getCurrentTick(); }
 
   togglePause(): void {
@@ -348,6 +394,8 @@ export class Game {
     this.timeController.clearHistory();
     this.statsTracker.clear();
     this.skillSystem.resetAll();
+    this.autoPlayer.clearLog();
+    this.autoPlayScheduledTicks = 0;
     if (this.leviathan) {
       this.leviathan.reset(0, Math.floor(this.grid.height / 2));
     }
